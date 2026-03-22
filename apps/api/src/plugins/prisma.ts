@@ -13,7 +13,10 @@ const prismaPlugin: FastifyPluginAsync = async (fastify) => {
     log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
   });
 
-  await prisma.$connect();
+  // Connect lazily - don't block server startup
+  prisma.$connect().catch((err) => {
+    fastify.log.error({ err }, 'Prisma initial connection failed - will retry on first query');
+  });
 
   fastify.decorate('prisma', prisma);
 
