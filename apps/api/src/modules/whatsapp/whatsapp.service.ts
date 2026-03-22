@@ -40,7 +40,9 @@ export class WhatsAppService {
     });
     if (!instance) throw new Error('Instance not found');
 
-    await this.manager.initInstance(instanceId);
+    // Always clear stale session on explicit connect to force fresh QR
+    await this.manager.clearSession(instanceId);
+    await this.manager.initInstance(instanceId, true);
     return { success: true };
   }
 

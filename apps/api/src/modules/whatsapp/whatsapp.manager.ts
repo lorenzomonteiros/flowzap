@@ -31,11 +31,25 @@ export class WhatsAppManager {
     return this.instances.get(instanceId)?.qr ?? null;
   }
 
-  async initInstance(instanceId: string): Promise<void> {
-    // Guard: don't double-init if already connecting or in qr state
+  async clearSession(instanceId: string): Promise<void> {
+    // Terminate any active socket first
     const existing = this.instances.get(instanceId);
-    if (existing && (existing.status === 'connecting' || existing.status === 'qr' || existing.status === 'connected')) {
-      return;
+    if (existing) {
+      try { existing.socket.end(undefined); } catch { /* ignore */ }
+      this.instances.delete(instanceId);
+    }
+    // Remove session files so Baileys starts completely fresh
+    const sessionDir = path.join(SESSION_BASE_DIR, instanceId);
+    try { await fs.rm(sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
+  }
+
+  async initInstance(instanceId: string, freshStart = false): Promise<void> {
+    if (!freshStart) {
+      // Guard: don't double-init if already connecting or in qr state
+      const existing = this.instances.get(instanceId);
+      if (existing && (existing.status === 'connecting' || existing.status === 'qr' || existing.status === 'connected')) {
+        return;
+      }
     }
 
     const instance = await this.prisma.whatsAppInstance.findUnique({
@@ -62,6 +76,7 @@ export class WhatsAppManager {
       printQRInTerminal: false,
       logger,
       browser: ['FlowZap', 'Chrome', '1.0.0'],
+      connectTimeoutMs: 30000,
     });
 
     this.instances.set(instanceId, { socket: sock, status: 'connecting' });
@@ -75,7 +90,6 @@ export class WhatsAppManager {
         const QRCode = await import('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr);
         this.instances.set(instanceId, { socket: sock, qr: qrDataUrl, status: 'qr' });
-        // Emit both events: 'qr' carries the image, 'status' updates the badge
         this.io.to(`instance:${instanceId}`).emit('qr', { instanceId, qr: qrDataUrl });
         this.io.to(`instance:${instanceId}`).emit('status', { instanceId, status: 'qr' });
         await this.prisma.whatsAppInstance.update({
@@ -85,8 +99,10 @@ export class WhatsAppManager {
       }
 
       if (connection === 'close') {
-        const shouldReconnect =
-          (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut;
+        const errorCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const shouldReconnect = errorCode !== DisconnectReason.loggedOut;
+
+        console.error(`[WhatsApp] Instance ${instanceId} disconnected. Code: ${errorCode}, shouldReconnect: ${shouldReconnect}`);
 
         this.io.to(`instance:${instanceId}`).emit('status', {
           instanceId,
@@ -98,7 +114,9 @@ export class WhatsAppManager {
         });
         this.instances.delete(instanceId);
 
-        if (shouldReconnect) {
+        // Only auto-reconnect if we had a valid session (connected before),
+        // never loop on fresh QR connection failures
+        if (shouldReconnect && errorCode !== DisconnectReason.restartRequired) {
           setTimeout(() => {
             void this.initInstance(instanceId);
           }, 5000);
@@ -155,20 +173,12 @@ export class WhatsAppManager {
   async disconnectInstance(instanceId: string): Promise<void> {
     const state = this.instances.get(instanceId);
     if (state) {
-      try {
-        await state.socket.logout();
-      } catch {
-        // ignore logout errors
-      }
+      try { await state.socket.logout(); } catch { /* ignore */ }
       this.instances.delete(instanceId);
     }
 
     const sessionDir = path.join(SESSION_BASE_DIR, instanceId);
-    try {
-      await fs.rm(sessionDir, { recursive: true });
-    } catch {
-      // ignore if doesn't exist
-    }
+    try { await fs.rm(sessionDir, { recursive: true, force: true }); } catch { /* ignore */ }
 
     await this.prisma.whatsAppInstance.update({
       where: { id: instanceId },
