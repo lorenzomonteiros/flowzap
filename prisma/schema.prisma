@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime @default(now())
+  instances    WhatsAppInstance[]
+  flows        Flow[]
+  contacts     Contact[]
+  webhooks     Webhook[]
+}
+
+model WhatsAppInstance {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  phoneNumber String?
+  status      String   @default("disconnected")
+  sessionData Json?
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages    Message[]
+}
+
+model Flow {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  isActive    Boolean  @default(false)
+  trigger     Json
+  nodes       Json
+  edges       Json
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions  FlowExecution[]
+}
+
+model FlowExecution {
+  id          String    @id @default(cuid())
+  flowId      String
+  contactId   String
+  status      String    @default("running")
+  currentNode String?
+  startedAt   DateTime  @default(now())
+  completedAt DateTime?
+  flow        Flow      @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  contact     Contact   @relation(fields: [contactId], references: [id], onDelete: Cascade)
+}
+
+model Contact {
+  id         String    @id @default(cuid())
+  userId     String
+  phone      String
+  name       String?
+  email      String?
+  tags       String[]
+  variables  Json?
+  optOut     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  executions FlowExecution[]
+  messages   Message[]
+}
+
+model Message {
+  id         String    @id @default(cuid())
+  instanceId String
+  contactId  String?
+  direction  String
+  type       String
+  content    Json
+  status     String    @default("pending")
+  sentAt     DateTime?
+  createdAt  DateTime  @default(now())
+  instance   WhatsAppInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  contact    Contact?  @relation(fields: [contactId], references: [id])
+}
+
+model Webhook {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  url       String
+  secret    String?
+  events    String[]
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs      WebhookLog[]
+}
+
+model WebhookLog {
+  id         String   @id @default(cuid())
+  webhookId  String
+  event      String
+  statusCode Int?
+  payload    Json
+  response   String?
+  createdAt  DateTime @default(now())
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+}

@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: flowzap-api
+    env: node
+    buildCommand: cd apps/api && npm install && npm run build && cd ../../ && npx prisma generate && npx prisma migrate deploy
+    startCommand: cd apps/api && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
