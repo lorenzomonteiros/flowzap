@@ -9,6 +9,6 @@ build/
 .next/
 .turbo/
 coverage/
-prisma/migrations/
+# prisma/migrations/ - keep migrations in git
 *.session.json
 sessions/
