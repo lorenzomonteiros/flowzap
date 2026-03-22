@@ -23,23 +23,27 @@ export function useSocket() {
 
     const socket = socketRef.current;
 
-    socket.on('connect', () => {
+    const handleConnect = () => {
       console.log('Socket connected:', socket.id);
-    });
-
-    socket.on('disconnect', () => {
+    };
+    const handleDisconnect = () => {
       console.log('Socket disconnected');
-    });
-
-    socket.on('status', (data: { instanceId: string; status: string; phoneNumber?: string }) => {
+    };
+    const handleStatus = (data: { instanceId: string; status: string; phoneNumber?: string }) => {
       updateInstance(data.instanceId, {
         status: data.status as WhatsAppInstanceStatus,
         ...(data.phoneNumber && { phoneNumber: data.phoneNumber }),
       });
-    });
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('disconnect', handleDisconnect);
+    socket.on('status', handleStatus);
 
     return () => {
-      socket.off('status');
+      socket.off('connect', handleConnect);
+      socket.off('disconnect', handleDisconnect);
+      socket.off('status', handleStatus);
     };
   }, [updateInstance]);
 
@@ -51,12 +55,24 @@ export function useSocket() {
     socketRef.current?.emit('leave-instance', instanceId);
   }, []);
 
-  const onQR = useCallback((callback: (data: { instanceId: string; qr: string }) => void) => {
-    socketRef.current?.on('qr', callback);
-    return () => {
-      socketRef.current?.off('qr', callback);
-    };
-  }, []);
+  const onQR = useCallback(
+    (callback: (data: { instanceId: string; qr: string }) => void) => {
+      const socket = socketRef.current;
+      if (!socket) return () => {};
+
+      const handler = (data: { instanceId: string; qr: string }) => {
+        // Update store so card badge/button switches to QR state immediately
+        updateInstance(data.instanceId, { status: 'qr' });
+        callback(data);
+      };
+
+      socket.on('qr', handler);
+      return () => {
+        socket.off('qr', handler);
+      };
+    },
+    [updateInstance]
+  );
 
   const onMessage = useCallback(
     (callback: (data: { instanceId: string; from: string; content: string }) => void) => {

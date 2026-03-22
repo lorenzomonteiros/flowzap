@@ -72,9 +72,31 @@ export function InstancesPage() {
   const handleConnect = async (instance: WhatsAppInstance) => {
     setActionLoading(instance.id);
     try {
-      await instancesService.connect(instance.id);
+      // Join socket room BEFORE the HTTP call so we never miss the QR event
       joinInstance(instance.id);
-      toast.info('Iniciando conexão...');
+      await instancesService.connect(instance.id);
+      toast.info('Aguardando QR Code...');
+
+      // HTTP fallback: if socket event is missed, poll for QR
+      let attempts = 0;
+      const pollQR = async () => {
+        if (attempts++ > 12) return;
+        try {
+          const res = await instancesService.getQR(instance.id);
+          if (res?.qr) {
+            setSelectedQR({ instanceId: instance.id, qr: res.qr });
+            setShowQRModal(true);
+          } else {
+            setTimeout(() => void pollQR(), 2000);
+          }
+        } catch {
+          setTimeout(() => void pollQR(), 2000);
+        }
+      };
+      // Start polling after 3s only if modal hasn't opened yet
+      setTimeout(() => {
+        if (!showQRModal) void pollQR();
+      }, 3000);
     } catch {
       toast.error('Erro ao conectar instância');
     } finally {

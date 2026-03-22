@@ -27,11 +27,28 @@ export class WhatsAppManager {
     private prisma: PrismaClient
   ) {}
 
+  getInstanceQR(instanceId: string): string | null {
+    return this.instances.get(instanceId)?.qr ?? null;
+  }
+
   async initInstance(instanceId: string): Promise<void> {
+    // Guard: don't double-init if already connecting or in qr state
+    const existing = this.instances.get(instanceId);
+    if (existing && (existing.status === 'connecting' || existing.status === 'qr' || existing.status === 'connected')) {
+      return;
+    }
+
     const instance = await this.prisma.whatsAppInstance.findUnique({
       where: { id: instanceId },
     });
     if (!instance) throw new Error('Instance not found');
+
+    // Update DB and emit status immediately so UI reflects connecting state
+    await this.prisma.whatsAppInstance.update({
+      where: { id: instanceId },
+      data: { status: 'connecting' },
+    });
+    this.io.to(`instance:${instanceId}`).emit('status', { instanceId, status: 'connecting' });
 
     const sessionDir = path.join(SESSION_BASE_DIR, instanceId);
     await fs.mkdir(sessionDir, { recursive: true });
@@ -58,7 +75,9 @@ export class WhatsAppManager {
         const QRCode = await import('qrcode');
         const qrDataUrl = await QRCode.toDataURL(qr);
         this.instances.set(instanceId, { socket: sock, qr: qrDataUrl, status: 'qr' });
+        // Emit both events: 'qr' carries the image, 'status' updates the badge
         this.io.to(`instance:${instanceId}`).emit('qr', { instanceId, qr: qrDataUrl });
+        this.io.to(`instance:${instanceId}`).emit('status', { instanceId, status: 'qr' });
         await this.prisma.whatsAppInstance.update({
           where: { id: instanceId },
           data: { status: 'qr' },
@@ -136,7 +155,11 @@ export class WhatsAppManager {
   async disconnectInstance(instanceId: string): Promise<void> {
     const state = this.instances.get(instanceId);
     if (state) {
-      await state.socket.logout();
+      try {
+        await state.socket.logout();
+      } catch {
+        // ignore logout errors
+      }
       this.instances.delete(instanceId);
     }
 

@@ -48,6 +48,18 @@ const whatsappRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  fastify.get('/:id/qr', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      await service.getInstance(id, request.user.userId);
+      const qr = service.getInstanceQR(id);
+      return reply.send({ success: true, data: { qr } });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get QR';
+      return reply.status(404).send({ success: false, error: message });
+    }
+  });
+
   fastify.post('/:id/connect', async (request, reply) => {
     try {
       const { id } = request.params as { id: string };

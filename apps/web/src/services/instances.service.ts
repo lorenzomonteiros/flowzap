@@ -21,6 +21,11 @@ export const instancesService = {
     await api.post(`/instances/${id}/connect`);
   },
 
+  async getQR(id: string): Promise<{ qr: string | null }> {
+    const response = await api.get<{ success: boolean; data: { qr: string | null } }>(`/instances/${id}/qr`);
+    return response.data.data!;
+  },
+
   async disconnect(id: string): Promise<void> {
     await api.post(`/instances/${id}/disconnect`);
   },

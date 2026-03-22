@@ -11,9 +11,12 @@ export class WhatsAppService {
     const instance = await this.prisma.whatsAppInstance.create({
       data: { userId, name, status: 'disconnected' },
     });
-
-    await this.manager.initInstance(instance.id);
+    // Don't auto-connect — user explicitly clicks "Conectar"
     return instance;
+  }
+
+  getInstanceQR(instanceId: string): string | null {
+    return this.manager.getInstanceQR(instanceId);
   }
 
   async listInstances(userId: string) {

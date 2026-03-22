@@ -22,6 +22,20 @@ const socketPlugin: FastifyPluginAsync = async (fastify) => {
     socket.on('join-instance', (instanceId: string) => {
       void socket.join(`instance:${instanceId}`);
       fastify.log.info(`Socket ${socket.id} joined instance:${instanceId}`);
+
+      // If QR was already generated, send it immediately to this socket
+      // so late joiners don't miss it
+      try {
+        const service = (fastify as unknown as { whatsappService?: { getInstanceQR: (id: string) => string | null } }).whatsappService;
+        if (service) {
+          const storedQR = service.getInstanceQR(instanceId);
+          if (storedQR) {
+            socket.emit('qr', { instanceId, qr: storedQR });
+          }
+        }
+      } catch {
+        // whatsappService may not be ready yet, ignore
+      }
     });
 
     socket.on('leave-instance', (instanceId: string) => {
