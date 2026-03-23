@@ -9,6 +9,15 @@ import { ContactsPage } from './pages/ContactsPage.tsx';
 import { ConversationsPage } from './pages/ConversationsPage.tsx';
 import { WebhooksPage } from './pages/WebhooksPage.tsx';
 import { SettingsPage } from './pages/SettingsPage.tsx';
+import { useAuthStore } from './stores/authStore.ts';
+
+// Guard: if zustand persist says "authenticated" but there's no access token in
+// localStorage (e.g. after a hard logout or tab cleared storage), reset auth state
+// immediately to avoid the infinite / → /dashboard redirect loop.
+const { isAuthenticated, logout } = useAuthStore.getState();
+if (isAuthenticated && !localStorage.getItem('accessToken')) {
+  logout();
+}
 
 export default function App() {
   return (

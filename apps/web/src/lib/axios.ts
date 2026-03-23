@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { useAuthStore } from '../stores/authStore.ts';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -41,7 +42,9 @@ api.interceptors.response.use(
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch {
-        localStorage.removeItem('accessToken');
+        // Call logout() which clears BOTH localStorage AND zustand isAuthenticated,
+        // preventing the infinite redirect loop caused by stale persisted auth state.
+        useAuthStore.getState().logout();
         window.location.href = '/';
         return Promise.reject(error);
       }
