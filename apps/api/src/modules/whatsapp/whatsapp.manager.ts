@@ -1,6 +1,7 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
+  fetchLatestBaileysVersion,
   WASocket,
   BaileysEventMap,
 } from '@whiskeysockets/baileys';
@@ -79,7 +80,12 @@ export class WhatsAppManager {
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     const logger = pino({ level: 'silent' });
 
+    // Always fetch the latest WhatsApp Web version to avoid 405 rejections
+    const { version } = await fetchLatestBaileysVersion();
+    console.log(`[WhatsApp] Connecting instance ${instanceId} with WA version ${version.join('.')}`);
+
     const sock = makeWASocket({
+      version,
       auth: state,
       printQRInTerminal: false,
       logger,
@@ -146,9 +152,10 @@ export class WhatsAppManager {
             data: { status: 'disconnected', phoneNumber: null },
           });
 
-          // Only auto-reconnect for established sessions that dropped unexpectedly.
-          // Never loop on fresh (no-session) connection failures.
-          if (shouldReconnect && errorCode !== undefined) {
+          // Auto-reconnect only for transient drops (408=lost, 428=closed).
+          // Never retry on rejection codes (405=version, 403=forbidden, undefined=no session).
+          const transientCodes = [408, 428];
+          if (shouldReconnect && errorCode !== undefined && transientCodes.includes(errorCode)) {
             setTimeout(() => {
               void this.initInstance(instanceId);
             }, 5000);
